@@ -86,12 +86,12 @@ class MergePlugin implements PluginInterface, EventSubscriberInterface
     /**
      * Offical package name
      */
-    const PACKAGE_NAME = 'wikimedia/composer-merge-plugin';
+    public const PACKAGE_NAME = 'wikimedia/composer-merge-plugin';
 
     /**
      * Priority that plugin uses to register callbacks.
      */
-    const CALLBACK_PRIORITY = 50000;
+    private const CALLBACK_PRIORITY = 50000;
 
     /**
      * @var Composer $composer
@@ -161,8 +161,6 @@ class MergePlugin implements PluginInterface, EventSubscriberInterface
         return array(
             PluginEvents::INIT =>
                 array('onInit', self::CALLBACK_PRIORITY),
-            $installerStartEvent =>
-                array('onDependencySolve', self::CALLBACK_PRIORITY),
             PackageEvents::POST_PACKAGE_INSTALL =>
                 array('onPostPackageInstall', self::CALLBACK_PRIORITY),
             ScriptEvents::POST_INSTALL_CMD =>
@@ -290,38 +288,6 @@ class MergePlugin implements PluginInterface, EventSubscriberInterface
     }
 
     /**
-     * Handle an event callback for pre-dependency solving phase of an install
-     * or update by adding any duplicate package dependencies found during
-     * initial merge processing to the request that will be processed by the
-     * dependency solver.
-     *
-     * @param InstallerEvent $event
-     */
-    public function onDependencySolve(InstallerEvent $event)
-    {
-        $request = $event->getRequest();
-        foreach ($this->state->getDuplicateLinks('require') as $link) {
-            $this->logger->info(
-                "Adding dependency <comment>{$link}</comment>"
-            );
-            $request->install($link->getTarget(), $link->getConstraint());
-        }
-
-        // Issue #113: Check devMode of event rather than our global state.
-        // Composer fires the PRE_DEPENDENCIES_SOLVING event twice for
-        // `--no-dev` operations to decide which packages are dev only
-        // requirements.
-        if ($this->state->shouldMergeDev() && $event->isDevMode()) {
-            foreach ($this->state->getDuplicateLinks('require-dev') as $link) {
-                $this->logger->info(
-                    "Adding dev dependency <comment>{$link}</comment>"
-                );
-                $request->install($link->getTarget(), $link->getConstraint());
-            }
-        }
-    }
-
-    /**
      * Handle an event callback following installation of a new package by
      * checking to see if the package that was installed was our plugin.
      *
@@ -335,9 +301,13 @@ class MergePlugin implements PluginInterface, EventSubscriberInterface
             if ($package === self::PACKAGE_NAME) {
                 $this->logger->info('composer-merge-plugin installed');
                 $this->state->setFirstInstall(true);
-                $this->state->setLocked(
-                    $event->getComposer()->getLocker()->isLocked()
-                );
+                if (version_compare('2.0.0', PluginInterface::PLUGIN_API_VERSION, '>')) {
+                    $this->state->setLocked(
+                        $event->getComposer()->getLocker()->isLocked()
+                    );
+                } else {
+                    $this->state->setLocked(false);
+                }
             }
         }
     }
@@ -354,14 +324,13 @@ class MergePlugin implements PluginInterface, EventSubscriberInterface
         // @codeCoverageIgnoreStart
         if ($this->state->isFirstInstall()) {
             $this->state->setFirstInstall(false);
-            $this->logger->info(
-                '<comment>' .
-                'Running additional update to apply merge settings' .
-                '</comment>'
-            );
+            $this->logger->log("\n".'<info>Running composer update to apply merge settings</info>');
+
+            $file = Factory::getComposerFile();
+            $lock = Factory::getLockFile($file);
+            $lockBackup = file_exists($lock) ? file_get_contents($lock) : null;
 
             $config = $this->composer->getConfig();
-
             $preferSource = $config->get('preferred-install') == 'source';
             $preferDist = $config->get('preferred-install') == 'dist';
 
@@ -387,7 +356,17 @@ class MergePlugin implements PluginInterface, EventSubscriberInterface
                 $installer->setUpdate(true);
             }
 
-            $installer->run();
+            $status = $installer->run();
+            if ($status !== 0) {
+                if ($lockBackup) {
+                    $this->logger->log(
+                        "\n".'<error>'.
+                        'Update to apply merge settings failed, reverting '.$lock.' to its original content.'.
+                        '</error>'
+                    );
+                    file_put_contents($lock, $lockBackup);
+                }
+            }
         }
         // @codeCoverageIgnoreEnd
     }
