@@ -28,7 +28,7 @@ Composer Merge Plugin requires [Composer 1.0.0](https://getcomposer.org/) or
 newer.
 
 ```
-$ composer require wikimedia/composer-merge-plugin
+$ composer require folkevil/composer-merge-plugin
 ```
 
 
@@ -38,7 +38,7 @@ Usage
 ```json
 {
     "require": {
-        "wikimedia/composer-merge-plugin": "dev-master"
+        "folkevil/composer-merge-plugin": "dev-master"
     },
     "extra": {
         "merge-plugin": {
