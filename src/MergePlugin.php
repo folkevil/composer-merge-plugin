@@ -92,6 +92,11 @@ class MergePlugin implements PluginInterface, EventSubscriberInterface
      * Priority that plugin uses to register callbacks.
      */
     private const CALLBACK_PRIORITY = 50000;
+    
+    
+    private const PRE_COMMAND_RUN = 'pre-command-run';
+
+    private const PRE_DEPENDENCIES_SOLVING = 'pre-dependencies-solving';
 
     /**
      * @var Composer $composer
@@ -156,7 +161,7 @@ class MergePlugin implements PluginInterface, EventSubscriberInterface
             $installerStartEvent = InstallerEvents::PRE_OPERATIONS_EXEC;
         } else {
             // composer-plugin-api ^1.0
-            $installerStartEvent = InstallerEvents::PRE_DEPENDENCIES_SOLVING;
+            $installerStartEvent = self::PRE_DEPENDENCIES_SOLVING;
         }
         return array(
             PluginEvents::INIT =>
